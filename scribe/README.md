@@ -38,3 +38,4 @@ August 10th, 1st half: [vector space models of text, intro to LSA](https://githu
 
 August 10th, 2nd half: [more on LSA](https://github.com/nicole-erich/MSBA-Summer/blob/master/Scribe%20Notes%20-%20August%2010%202016%20-%202nd%20Half.pdf), by Erich, Hong, and Lundy.   
 
+August 11th, 2nd half: [Naive Baye and PNC] (https://github.com/danalexR2/STA380/blob/master/scribe/Final%20Notes%20Second%20Half.pdf), by Dan
