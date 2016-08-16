@@ -1,0 +1,309 @@
+---
+title: 'STA 380 Homework 2: Daan Rozenbroek, Daniel Lindquist, Kayla Torres'
+author: "Kayla"
+date: "August 15, 2016"
+output: html_document
+---
+#Question 1
+This is a plot of the mean departure delay (in minutes) for each day of the month/Day of the week. As well as for months in a year
+```{r}
+ABIA <- read.csv('ABIA.csv')
+dim(ABIA)
+names(ABIA)
+
+library(ggplot2)
+ggplot(ABIA, aes(DayofMonth, DepDelay)) + geom_smooth() 
+ggplot(ABIA, aes(Month, DepDelay)) + geom_smooth() 
+```
+This is a plot of the number of cancelled flights by the flight carrier.
+```{r}
+df1 <- ABIA[,c('UniqueCarrier', 'Cancelled')]
+only_cancellations <- df1[df1$Cancelled == 1,]
+ggplot(only_cancellations, aes(x = UniqueCarrier, y = Cancelled)) + geom_bar(stat='identity')
+```
+This is a plot of the different flight carriers and the count of cancellations and the specific reasons. 
+```{r}
+df2 <- ABIA[,c('UniqueCarrier', 'CancellationCode')]
+df2_A <- df2[df2$CancellationCode == c('A','B','C','D'),]
+plot <- ggplot(df2_A, aes(x=UniqueCarrier, fill=CancellationCode)) + geom_bar(position='dodge')
+plot
+```
+
+```{r}
+df3 <- ABIA[,c('Month', 'CancellationCode')]
+df3_A <- df3[df3$CancellationCode == c('A','B','C','D'),]
+plot2 <- ggplot(df3_A, aes(x=Month, fill=CancellationCode)) + geom_bar(position='dodge')
+plot2
+```
+
+This is a plot of the average delay time for every day of the week.
+```{r}
+df <- ABIA[, c("ArrDelay","DayOfWeek")]
+head(df)
+a <- aggregate(ArrDelay ~ DayOfWeek, data=df, FUN=mean)
+barplot(a$ArrDelay, names.arg=a$DayOfWeek, ylab = "Average Delay Time", xlab = "Day of the Week", main = "Delays by Day")
+```
+
+
+#Question 2
+```{r}
+library(tm)
+library(caret)
+library(glmnet)
+library(SnowballC)
+library(class)
+```
+
+```{r}
+readerPlain = function(fname){
+				readPlain(elem=list(content=readLines(fname)), 
+							id=fname, language='en') }
+```
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+author_dirs1 = Sys.glob('ReutersC50/c50train/*')
+author_dirs2 = Sys.glob('ReutersC50/c50test/*')
+author_dirs = c(author_dirs1,author_dirs2)
+file_list = NULL
+labels = NULL
+
+for(author in author_dirs) { 
+	author_name = substring(author, first=29)
+	files_to_add = Sys.glob(paste0(author, '/*.txt'))
+	file_list = append(file_list, files_to_add)
+	labels = append(labels, rep(author_name, length(files_to_add)))
+} 
+```
+
+```{r}
+all_docs = lapply(file_list, readerPlain) 
+names(all_docs) = file_list
+names(all_docs) = sub('.txt', '', names(all_docs))
+
+my_corpus = Corpus(VectorSource(all_docs))
+names(my_corpus) = file_list
+
+
+my_corpus = tm_map(my_corpus, content_transformer(tolower)) # make everything lowercase
+my_corpus = tm_map(my_corpus, content_transformer(removeNumbers)) # remove numbers
+my_corpus = tm_map(my_corpus, content_transformer(removePunctuation)) # remove punctuation
+my_corpus = tm_map(my_corpus, content_transformer(stripWhitespace)) ## remove excess white-space
+my_corpus = tm_map(my_corpus, content_transformer(removeWords), stopwords("SMART"))
+```
+
+```{r}
+my_corpus <- tm_map(my_corpus, stemDocument)
+
+DTM = DocumentTermMatrix(my_corpus)
+```
+
+```{r}
+inspect(DTM[1:10,1:20])
+DTM = removeSparseTerms(DTM, 0.975)
+```
+
+```{r}
+X = as.data.frame(data.matrix(DTM))
+names = row.names(X)
+cat_col = c()
+for (i in names){ 
+  
+  str = i
+
+  list = strsplit(str, '/', fixed=FALSE)
+  list= as.vector(list)
+
+  list1 = matrix(unlist(list), ncol=4, byrow=TRUE)
+  cat_col = c(cat_col,list1[1,3]) 
+ 
+}
+X[,"Category of Author"] <- cat_col 
+```
+
+Using a KNN model
+```{r}
+train <- X[1:2500,-1277] 
+test <- X[2501:5000,-1277]
+cl <- X[, "Category of Author"]
+
+knn.pred = knn(train, test, cl[1:2500]) #predicting the author names 
+
+conf.mat <- table("Predictions" = knn.pred, Actual = cl[2501:5000]) #confusion matrix
+
+accuracy <- sum(diag(conf.mat))/length(test) * 100
+accuracy 
+```
+
+```{r}
+#using X, perform KNN
+library(class)
+
+# Split data by rownumber into two equal portions
+set.seed(3)
+train_sample = sample(1:2500,2500)
+test_sample = sample(2501:5000, 2500)
+
+train <- X[train_sample,] #don't include the column for category --- train rows
+test <- X[test_sample,]
+
+# Isolate classifier
+cl <- X[,"Category of Author"]
+
+cat_train = cl[train_sample] #instead of cl[1:2500]
+cat_test = cl[test_sample] #instead of cl[2501:5000]
+#fit knn
+
+knn.pred = knn(train[,-1277], test[,-1277], cat_train) #predicting the author names 
+
+#knn.pred
+
+conf.mat <- table("Predictions" = knn.pred, Actual = cat_test) #confusion matrix
+
+#conf.mat
+
+accuracy <- sum(diag(conf.mat))/length(test) * 100
+accuracy #percent accuracy
+
+```
+There is an accuracy of 77% when we predicted it on the out-of-sample data using the KNN model.
+
+
+#pca
+```{r}
+dir1= Sys.glob('ReutersC50/C50train/*')
+dir2=  Sys.glob('ReutersC50/C50test/*')
+
+
+
+file_list_train = NULL #list of all the different text documents
+labels_train = NULL #labels is the names of the authors
+for(author in dir1) {
+  author_name_train = substring(author, first=29)
+  files_to_add_train = Sys.glob(paste0(author, '/*.txt'))
+  file_list_train = append(file_list_train, files_to_add_train)
+  labels_train = append(labels_train, rep(author_name_train, length(files_to_add_train)))
+}
+file_list_test = NULL 
+labels_test = NULL
+for(author in dir2) {
+  author_name_test = substring(author, first=28)
+  files_to_add_test = Sys.glob(paste0(author, '/*.txt'))
+  file_list_test = append(file_list_test, files_to_add_test)
+  labels_test = append(labels_test, rep(author_name_test, length(files_to_add_test)))
+}
+
+all_file <- append(file_list_train, file_list_test)
+all_label <- unique(append(labels_train, labels_test))
+
+all_docs = lapply(all_file, readerPlain) 
+names(all_docs) = all_file
+names(all_docs) = sub('.txt', '', names(all_docs))
+
+my_corpus = Corpus(VectorSource(all_docs))
+names(my_corpus) = all_label
+
+
+my_corpus = tm_map(my_corpus, content_transformer(tolower)) # make everything lowercase
+my_corpus = tm_map(my_corpus, content_transformer(removeNumbers)) # remove numbers
+my_corpus = tm_map(my_corpus, content_transformer(removePunctuation)) # remove punctuation
+my_corpus = tm_map(my_corpus, content_transformer(stripWhitespace)) ## remove excess white-space
+my_corpus = tm_map(my_corpus, content_transformer(removeWords), stopwords("en"))
+
+DTM <- DocumentTermMatrix(my_corpus)
+DTM
+DTM <- removeSparseTerms(DTM, 0.975) #this only includes the top 97.5 of word frequency
+
+x <- as.matrix(DTM)
+x_train <- x[1:2500,] #this splits the data in half
+x_test <- x[2501:5000,] 
+smoothing <- 1/nrow(x_train)
+
+pca_authors <- prcomp(x)
+transformed <- pca_authors$x[,1:300]
+transformed_train <- transformed[1:2500,]
+transformed_test <- transformed[2501:5000,]
+logistical_model <- glmnet(y = rep(1:50, each=50), x = transformed_train, family='multinomial', alpha=0.1)
+author_prediction <- as.data.frame(predict(logistical_model, newx = transformed_train, type='class', s=0.05))
+author_prediction$actual_authors <- rep(1:50, each =50)
+confusionMatrix(author_prediction$`1`,author_prediction$actual_authors)
+```
+Using pca we got a accuracy prediction of 81.6%. There are some authors, such as the 38th author, who had 21 predictions that the document belonged to the 46th author. This could because the 38th author and 46th author have similar writing styles or documents. They could have worked together as well. We would prefer the pca model because we got a stronger prediction accuracy. 
+
+#Question 3
+```{r}
+library(arules)
+library(arulesViz)
+library(datasets)
+```
+
+```{r}
+groceries <- read.transactions(file='groceries.txt', format='basket', sep=',')
+inspect(groceries)
+summary(groceries)
+```
+
+this is an item frequency plot of the top 20 items
+```{r}
+itemFrequencyPlot(groceries, topN=20, type='absolute')
+```
+
+Defining the rules; association rule mining. Given a set of transactions, find rules that will predict the occurance of an item based on the occurances of other items. Support of 0.01 is a 0.001 fraction of transactions that contain an itemset. The frequency of each item set that we are evaluating is bigger than 0.001. Confidence us the measure of how often items in Y appear in transactions that contain X. Which we are setting at 0.8, so we only want transactions that have a likelihood of greater than 80%. 
+
+```{r}
+rules <- apriori(groceries, parameter = list(support = 0.001, confidence = 0.8, maxlen=4))
+options(digits=2)
+inspect(rules)
+```
+Output of this reads that for example if someone buys cereal and yogurt, there is a 81% likeliness that they'll also purchase whole milk. This combination has a .0017 chance of existing. We also made the rules more concise so that there aren't lists that are excessively long by putting a max length on the rules.
+
+```{r}
+summary(rules)
+```
+we see that there are 258 rules generated. We also see that 4 is the highest rule length means they are 4 items long. We can see the ranges in support, lift, and confidence. We can see that the total data that was mined was 9835.
+
+sorting the rules by most likely rules. 
+```{r}
+rules<-sort(rules, by="confidence", decreasing=TRUE)
+options(digits=2)
+inspect(rules)
+```
+
+remove rududant repetative rules
+```{r}
+subset.matrix <- is.subset(rules, rules)
+subset.matrix[lower.tri(subset.matrix, diag=T)] <- NA
+redundant <- colSums(subset.matrix, na.rm=T) >= 1
+rules.pruned <- rules[!redundant]
+rules<-rules.pruned
+```
+
+
+now we can target items, we will find out what items are most likely to be bought before purchasing a certain item. We also answer the question of what customers are likely to buy after they purchase a specific item. 
+
+These items are most likely to be purchsed before a customer buys soda.
+```{r}
+rules<-apriori(data=groceries, parameter=list(supp=0.001,conf = 0.08, minlen=3), 
+               appearance = list(default="lhs",rhs="soda"),
+               control = list(verbose=F))
+rules<-sort(rules, decreasing=TRUE,by="confidence")
+inspect(rules[1:5])
+```
+
+This is what customers are likely to buy after soda. We can see that the most common items bought after buying soda are whole milk, rolls/buns, other vegetables, bottled water and yogurt. These are the top 5 most likely items that would be purchsed.
+```{r}
+rules<-apriori(data=groceries, parameter=list(supp=0.001,conf = 0.15,minlen=2), 
+               appearance = list(default="rhs",lhs="soda"),
+               control = list(verbose=F))
+rules<-sort(rules, decreasing=TRUE,by="confidence")
+inspect(rules[1:5])
+```
+This makes sense to me because people are always buying other beverages when they buy soda and other items that would be purchased for a cook-out or BBQ. 
+
+here is a visualization of the rules, showing for each item what is the most likely next items to purchase. 
+```{r}
+plot(rules,method="graph",interactive=TRUE,shading=NA)
+```
